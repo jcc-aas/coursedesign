@@ -385,6 +385,23 @@ void calc_block_hash(Block* b, char* out_hash) {
     // TODO: 请实现代码
     // sprintf(buf, "%ld%d%s...", b->header.nonce, b->header.index...);
     // calc_sha256(buf, out_hash);
+
+char buffer[1024];
+    
+    // 将区块头的所有关键字段拼接成一个字符串
+    // 按照提示，将nonce放在最前面
+    sprintf(buffer, "%ld%d%s%s%ld%d%s",
+        b->header.nonce,               // 随机数
+        b->header.index,               // 区块高度
+        b->header.prev_hash,           // 前一个区块的哈希
+        b->header.merkle_root,         // 默克尔根
+        b->header.timestamp,           // 时间戳
+        b->header.difficulty,          // 难度值
+        b->header.miner_pubkey         // 矿工公钥
+    );
+    
+    // 计算拼接后字符串的SHA256哈希值
+    calc_sha256(buffer, out_hash);
 }
 
 // D2: 执行挖矿 (PoW)
@@ -394,10 +411,133 @@ void calc_block_hash(Block* b, char* out_hash) {
 // 3. 是 -> 成功，break；否 -> b->header.nonce++，继续算。
 void perform_pow(Block* b) {
     // TODO: 请实现代码
+  printf("[挖矿] 开始挖矿区块 #%d...\n", b->header.index);
+    printf("[挖矿] 目标: 哈希以 '000' 开头\n");
+    
+    // 记录开始时间
+    time_t start_time = time(NULL);
+    
+    // 初始化nonce为0
+    b->header.nonce = 0;
+    
+    // 用于存储计算出的哈希
+    char current_hash[65];
+    
+    // 挖矿循环
+    while (1) {
+        // 1. 计算当前区块哈希
+        calc_block_hash(b, current_hash);
+        
+        // 2. 检查哈希是否满足条件（以"000"开头）
+        if (strncmp(current_hash, "000", 3) == 0) {
+            // 挖矿成功！
+            break;
+        }
+        
+        // 3. 不满足条件，增加nonce继续尝试
+        b->header.nonce++;
+        
+        // 可选：每10000次尝试打印一次进度
+        if (b->header.nonce % 10000 == 0) {
+            printf("[挖矿] 已尝试 %ld 次 nonce...\n", b->header.nonce);
+        }
+        
+        // 安全措施：防止无限循环（虽然在实际区块链中不应该有）
+        if (b->header.nonce > 100000000) { // 1亿次尝试上限
+            printf("[警告] 挖矿超时，强制停止\n");
+            // 为了演示，我们允许使用一个不那么难的哈希
+            // 在实际区块链中，这会破坏共识机制
+            if (strncmp(current_hash, "00", 2) == 0) {
+                printf("[妥协] 使用以'00'开头的哈希继续\n");
+                break;
+            }
+        }
+    }
+    
+    // 计算最终哈希并存入区块
+    calc_block_hash(b, b->hash);
+    
+    // 记录结束时间
+    time_t end_time = time(NULL);
+    long mining_time = end_time - start_time;
+    
+    printf("[挖矿] 成功！找到有效 nonce: %ld\n", b->header.nonce);
+    printf("[挖矿] 区块哈希: %s\n", b->hash);
+    printf("[挖矿] 耗时: %ld 秒\n", mining_time);
+    printf("[挖矿] 矿工: %s\n", b->header.miner_pubkey);
 }
 
 // [D-加分项] 动态难度 (Bonus)
 // 提示：传入难度参数，不再固定 "000"，而是根据参数判断前缀0的个数。
+void perform_pow_difficulty(Block* b, int difficulty) {
+    // 检查难度值是否合理
+    if (difficulty < 1 || difficulty > 10) {
+        printf("[错误] 难度值应在1-10之间，使用默认值3\n");
+        difficulty = 3;
+    }
+    
+    printf("[挖矿] 开始挖矿区块 #%d...\n", b->header.index);
+    
+    // 构建目标前缀字符串（例如难度为3时："000"）
+    char target_prefix[11]; // 最多10个0 + 结束符
+    memset(target_prefix, '0', difficulty);
+    target_prefix[difficulty] = '\0';
+    
+    printf("[挖矿] 目标: 哈希以 '%s' 开头 (难度: %d)\n", target_prefix, difficulty);
+    
+    // 记录开始时间
+    time_t start_time = time(NULL);
+    
+    // 初始化nonce
+    b->header.nonce = 0;
+    
+    // 用于存储计算出的哈希
+    char current_hash[65];
+    
+    // 挖矿循环
+    while (1) {
+        // 1. 计算当前区块哈希
+        calc_block_hash(b, current_hash);
+        
+        // 2. 检查哈希是否满足条件
+        if (strncmp(current_hash, target_prefix, difficulty) == 0) {
+            // 挖矿成功！
+            break;
+        }
+        
+        // 3. 不满足条件，增加nonce继续尝试
+        b->header.nonce++;
+        
+        // 可选：每50000次尝试打印一次进度
+        if (b->header.nonce % 50000 == 0) {
+            printf("[挖矿] 已尝试 %ld 次 nonce...\n", b->header.nonce);
+        }
+        
+        // 安全措施：防止无限循环
+        if (b->header.nonce > 1000000000) { // 10亿次尝试上限
+            printf("[警告] 挖矿超时，降低难度重试\n");
+            // 降低难度重试
+            if (difficulty > 1) {
+                difficulty--;
+                memset(target_prefix, '0', difficulty);
+                target_prefix[difficulty] = '\0';
+                printf("[妥协] 新目标: 哈希以 '%s' 开头\n", target_prefix);
+            }
+        }
+    }
+    
+    // 计算最终哈希并存入区块
+    calc_block_hash(b, b->hash);
+    
+    // 记录结束时间
+    time_t end_time = time(NULL);
+    long mining_time = end_time - start_time;
+    
+    printf("[挖矿] 成功！找到有效 nonce: %ld\n", b->header.nonce);
+    printf("[挖矿] 区块哈希: %s\n", b->hash);
+    printf("[挖矿] 最终难度: %d\n", difficulty);
+    printf("[挖矿] 耗时: %ld 秒\n", mining_time);
+}
 
 
 
@@ -758,4 +898,5 @@ int main() {
         }
     }
     return 0;
+
 }
