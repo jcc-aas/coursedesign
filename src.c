@@ -324,22 +324,142 @@ void sort_miners_by_balance() {
 double get_balance(const char* pubkey) {
     double bal = 0.0;
     // TODO: 请实现代码
-    // 伪代码:
-    // Block* curr = g_head;
-    // while(curr) {
-    //    for i in txs:
-    //       if tx.receiver == pubkey: bal += tx.amount
-    //       if tx.sender == pubkey: bal -= tx.amount
-    //    curr = curr->next;
-    // }
+    // #include <string.h>  // 用于strcmp字符串比较
+
+// 定义交易结构体（需与项目实际结构一致）
+typedef struct Transaction {
+    const char* sender;    // 发送者公钥
+    const char* receiver;  // 接收者公钥
+    double amount;         // 交易金额
+} Transaction;
+
+// 定义区块结构体（需与项目实际结构一致）
+typedef struct Block {
+    Transaction* transactions;  // 区块内的交易数组
+    int tx_num;                 // 区块内交易数量
+    struct Block* next;         // 指向下一个区块的指针
+} Block;
+
+// 全局区块链头节点和尾节点（题目提及的g_head/g_tail）
+extern Block* g_head;
+extern Block* g_tail;
+
+// 计算指定公钥的余额
+double get_balance(const char* pubkey) {
+    double bal = 0.0;
+    // 空指针校验：避免pubkey为NULL导致的内存访问错误
+    if (pubkey == NULL) {
+        return bal;
+    }
+
+    Block* curr = g_head;  // 从区块链头节点开始遍历
+    // 遍历到尾节点为止（包含g_tail）
+    while (curr != NULL && curr != g_tail->next) {
+        // 遍历当前区块内的所有交易
+        for (int i = 0; i < curr->tx_num; i++) {
+            Transaction* tx = &(curr->transactions[i]);
+            // 接收者匹配：余额增加
+            if (strcmp(tx->receiver, pubkey) == 0) {
+                bal += tx->amount;
+            }
+            // 发送者匹配：余额减少
+            if (strcmp(tx->sender, pubkey) == 0) {
+                bal -= tx->amount;
+            }
+        }
+        curr = curr->next;  // 移动到下一个区块
+    }
+
     return bal;
 }
+
 
 // B2: 地址解析
 // 提示：依次查找 g_contact_head 和 g_miner_head，如果名字匹配则返回公钥。
 // 特殊处理：如果输入本身是64位Hash，直接返回；如果是 "SATOSHI"，返回 g_satoshi_pub。
 const char* resolve_address(const char* input_name) {
-    // TODO: 请实现代码
+    // TODO:#include <string.h>
+#include <ctype.h>
+
+// 假设已定义的全局变量和结构体（需与项目实际一致）
+extern const char* g_satoshi_pub;       // 中本聪的公钥
+extern struct Contact* g_contact_head;  // 联系人链表头节点
+extern struct Miner* g_miner_head;      // 矿工链表头节点
+
+// 联系人结构体（示例）
+typedef struct Contact {
+    char* name;         // 联系人名称
+    char* pubkey;       // 联系人公钥
+    struct Contact* next;
+} Contact;
+
+// 矿工结构体（示例）
+typedef struct Miner {
+    char* name;         // 矿工名称
+    char* pubkey;       // 矿工公钥
+    struct Miner* next;
+} Miner;
+
+// 辅助函数：判断字符串是否为64位十六进制Hash
+int is_64bit_hash(const char* str) {
+    if (str == NULL || strlen(str) != 64) return 0;
+    for (int i = 0; i < 64; i++) {
+        if (!isxdigit(str[i])) return 0; // 检查是否为十六进制字符
+    }
+    return 1;
+}
+
+// 辅助函数：忽略大小写比较字符串（用于Satoshi匹配）
+int strcasecmp_custom(const char* s1, const char* s2) {
+    while (*s1 && *s2) {
+        if (toupper(*s1) != toupper(*s2)) return *s1 - *s2;
+        s1++;
+        s2++;
+    }
+    return *s1 - *s2;
+}
+
+// 地址解析核心函数
+const char* resolve_address(const char* input_name) {
+    // 空指针校验
+    if (input_name == NULL) return NULL;
+
+    // 1. 处理64位Hash：直接返回
+    if (is_64bit_hash(input_name)) {
+        return input_name;
+    }
+
+    // 2. 处理"Satoshi"（忽略大小写）：返回g_satoshi_pub
+    if (strcasecmp_custom(input_name, "SATOSHI") == 0) {
+        return g_satoshi_pub;
+    }
+
+    // 3. 依次查找g_contact_head联系人链表
+    Contact* curr_contact = g_contact_head;
+    while (curr_contact != NULL) {
+        if (strcmp(curr_contact->name, input_name) == 0) {
+            return curr_contact->pubkey;
+        }
+        curr_contact = curr_contact->next;
+    }
+
+    // 4. 查找g_miner_head矿工链表
+    Miner* curr_miner = g_miner_head;
+    while (curr_miner != NULL) {
+        if (strcmp(curr_miner->name, input_name) == 0) {
+            return curr_miner->pubkey;
+        }
+        curr_miner = curr_miner->next;
+    }
+
+    // 【B-加分项】模糊查找：支持输入"Sat"匹配"Satoshi"
+    if (strstr("SATOSHI", input_name) != NULL || strstr("satoshi", input_name) != NULL) {
+        return g_satoshi_pub;
+    }
+
+    // 未找到匹配项
+    return NULL;
+}
     return NULL; // 没找到返回NULL
 }
 
@@ -900,3 +1020,4 @@ int main() {
     return 0;
 
 }
+
